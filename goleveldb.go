@@ -211,6 +211,9 @@ func (db *GoLevelDB) ForceCompact(start, limit []byte) error {
 // This is how the iostats look like (currently):
 // Read(MB):3895.04860 Write(MB):3654.64712
 func (db *GoLevelDB) meter(refresh time.Duration) {
+	fmt.Printf("Begin Metering")
+	defer fmt.Printf("Finished Metering")
+
 	// Create the counters to store current and previous compaction values
 	compactions := make([][]float64, 2)
 	for i := 0; i < 2; i++ {
