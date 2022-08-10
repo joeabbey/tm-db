@@ -53,7 +53,7 @@ func NewGoLevelDBWithOpts(name string, dir string, o *opt.Options) (*GoLevelDB, 
 		quitChan: make(chan chan error),
 	}
 
-	go database.meter(metricsGatheringInterval)
+	go database.meter(metricsGatheringInterval, name)
 	return database, nil
 }
 
@@ -210,9 +210,9 @@ func (db *GoLevelDB) ForceCompact(start, limit []byte) error {
 //
 // This is how the iostats look like (currently):
 // Read(MB):3895.04860 Write(MB):3654.64712
-func (db *GoLevelDB) meter(refresh time.Duration) {
-	fmt.Printf("Begin Metering")
-	defer fmt.Printf("Finished Metering")
+func (db *GoLevelDB) meter(refresh time.Duration, name string) {
+	fmt.Printf("meter: %s begin\n", name)
+	defer fmt.Printf("meter: %s end\n", name)
 
 	// Create the counters to store current and previous compaction values
 	compactions := make([][]float64, 2)
@@ -276,11 +276,12 @@ func (db *GoLevelDB) meter(refresh time.Duration) {
 		}
 		// Update all the requested meters
 
-		metrics.SetGauge([]string{"goleveldb", "disk_size"}, float32(compactions[i%2][0]*1024*1024))
-		metrics.SetGauge([]string{"goleveldb", "total_time_compaction"}, float32((compactions[i%2][1]-compactions[(i-1)%2][1])*1000*1000*1000))
-		metrics.SetGauge([]string{"goleveldb", "data_read_during_compaction"}, float32((compactions[i%2][2]-compactions[(i-1)%2][2])*1024*1024))
-		metrics.SetGauge([]string{"goleveldb", "data_written_during_compaction"}, float32((compactions[i%2][3]-compactions[(i-1)%2][3])*1024*102))
+		metrics.SetGauge([]string{"goleveldb", name,  "disk_size"}, float32(compactions[i%2][0]*1024*1024))
+		metrics.SetGauge([]string{"goleveldb", name, "total_time_compaction"}, float32((compactions[i%2][1]-compactions[(i-1)%2][1])*1000*1000*1000))
+		metrics.SetGauge([]string{"goleveldb", name, "data_read_during_compaction"}, float32((compactions[i%2][2]-compactions[(i-1)%2][2])*1024*1024))
+		metrics.SetGauge([]string{"goleveldb", name, "data_written_during_compaction"}, float32((compactions[i%2][3]-compactions[(i-1)%2][3])*1024*102))
 
+		fmt.Printf("meter: %s leveldb.stats\n", name)
 		// Retrieve the write delay statistic
 		writedelay, err := db.db.GetProperty("leveldb.writedelay")
 		if err != nil {
@@ -303,9 +304,10 @@ func (db *GoLevelDB) meter(refresh time.Duration) {
 			continue
 		}
 		delay := delayN - delaystats[0]
-		metrics.MeasureSince([]string{"goleveldb", "write_delay_n_database_compaction"}, time.Unix(delay, 0))
+		metrics.MeasureSince([]string{"goleveldb", name, "write_delay_n_database_compaction"}, time.Unix(delay, 0))
 		delaySeconds := duration.Nanoseconds() - delaystats[1]
-		metrics.MeasureSince([]string{"goleveldb", "write_delay_database_compaction"}, time.Unix(delaySeconds, 0))
+		metrics.MeasureSince([]string{"goleveldb", name, "write_delay_database_compaction"}, time.Unix(delaySeconds, 0))
+		fmt.Printf("meter: %s leveldb.stats\n", name)
 
 		// If a warning that db is performing compaction has been displayed, any subsequent
 		// warnings will be withheld for one minute not to overwhelm the user.
@@ -339,8 +341,9 @@ func (db *GoLevelDB) meter(refresh time.Duration) {
 			continue
 		}
 
-		metrics.SetGauge([]string{"goleveldb", "disk_reads"}, float32(nRead-iostats[0])*1024*1024)
-		metrics.SetGauge([]string{"goleveldb", "disk_writes"}, float32(nWrite-iostats[1])*1024*1024)
+		metrics.SetGauge([]string{"goleveldb", name, "disk_reads"}, float32(nRead-iostats[0])*1024*1024)
+		metrics.SetGauge([]string{"goleveldb", name, "disk_writes"}, float32(nWrite-iostats[1])*1024*1024)
+		fmt.Printf("meter: %s leveldb.iostats\n", name)
 
 		iostats[0], iostats[1] = nRead, nWrite
 		compCount, err := db.db.GetProperty("leveldb.compcount")
@@ -360,11 +363,12 @@ func (db *GoLevelDB) meter(refresh time.Duration) {
 			merr = err
 			continue
 		}
-		metrics.SetGauge([]string{"goleveldb", "memory_compaction"}, float32(memComp))
-		metrics.SetGauge([]string{"goleveldb", "memory_compaction"}, float32(memComp))
-		metrics.SetGauge([]string{"goleveldb", "non_level0_compaction"}, float32(nonLevel0Comp))
-		metrics.SetGauge([]string{"goleveldb", "level0_compaction"}, float32(level0Comp))
-		metrics.SetGauge([]string{"goleveldb", "seek_compaction"}, float32(seekComp))
+		metrics.SetGauge([]string{"goleveldb", name, "memory_compaction"}, float32(memComp))
+		metrics.SetGauge([]string{"goleveldb", name, "memory_compaction"}, float32(memComp))
+		metrics.SetGauge([]string{"goleveldb", name, "non_level0_compaction"}, float32(nonLevel0Comp))
+		metrics.SetGauge([]string{"goleveldb", name, "level0_compaction"}, float32(level0Comp))
+		metrics.SetGauge([]string{"goleveldb", name, "seek_compaction"}, float32(seekComp))
+		fmt.Printf("meter: %s leveldb.compcounts\n", name)
 
 		// Sleep a bit, then repeat the stats collection
 		select {
